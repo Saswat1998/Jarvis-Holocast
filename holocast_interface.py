@@ -24,7 +24,6 @@ iron_green = (34, 204, 34)
 # Icon position and size
 icon_pos = [screen_width // 2, screen_height // 2]
 icon_size = 50
-base_icon_size = icon_size
 
 # Fonts
 font = pygame.font.Font(None, 36)
@@ -79,6 +78,7 @@ while running:
             elif gesture_data.get("gesture") == "pinch_zoom":
                 zoom_factor = gesture_data["zoom_factor"]
         except json.JSONDecodeError:
+            # Handle the case where the JSON is not valid
             pass
 
     for event in pygame.event.get():
@@ -94,7 +94,7 @@ while running:
         pygame.draw.line(screen, iron_blue, (0, y), (screen_width, y), 1)
 
     # Calculate new icon size based on zoom factor
-    current_icon_size = int(base_icon_size * zoom_factor)
+    current_icon_size = int(icon_size * zoom_factor)
 
     # Draw the glowing circle
     draw_glowing_circle(screen, iron_yellow, icon_pos, current_icon_size, 100)
@@ -103,7 +103,7 @@ while running:
     pygame.draw.circle(screen, iron_blue, icon_pos, current_icon_size)
 
     # Draw text
-    text = font.render('JARVIS Interface', True, iron_green)
+    text = font.render('Iron Man Interface', True, iron_green)
     screen.blit(text, (20, 20))
 
     # Draw rotating lines around the icon

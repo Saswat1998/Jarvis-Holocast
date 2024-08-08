@@ -1,6 +1,6 @@
+import cv2
+import mediapipe as mp
 import pygame
-import json
-import os
 import math
 
 pygame.init()
@@ -24,9 +24,6 @@ iron_green = (34, 204, 34)
 font = pygame.font.Font(None, 36)
 small_font = pygame.font.Font(None, 24)
 
-# Initial zoom factor
-zoom_factor = 1.0
-
 # Objects data
 objects = [
     {"pos": [200, 200], "size": 50, "zoom_factor": 1.0},
@@ -37,8 +34,14 @@ selected_object = None
 pointer_pos = [screen_width // 2, screen_height // 2]
 is_dragging = False
 
-# Delay to allow hand_gesture.py to write initial data
-pygame.time.wait(2000)
+# Initialize MediaPipe Hands
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands()
+mp_draw = mp.solutions.drawing_utils
+
+# Initialize Webcam
+cap = cv2.VideoCapture(0)
+initial_distance = None
 
 # Function to draw a glowing circle
 def draw_glowing_circle(surface, color, center, radius, glow_radius):
@@ -72,36 +75,82 @@ def draw_jarvis_logo(surface, text, center, radius, angle_offset):
 # Main loop
 running = True
 while running:
-    # Read gesture data from the file
-    if os.path.exists('gesture_data.json'):
-        try:
-            with open('gesture_data.json', 'r') as f:
-                gesture_data = json.load(f)
+    success, img = cap.read()
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    results = hands.process(img_rgb)
 
-            # Move pointer based on hand movement
-            if gesture_data.get("gesture") == "pinch_move":
+    gesture_data = {}
+
+    if results.multi_hand_landmarks:
+        if len(results.multi_hand_landmarks) == 1:
+            hand = results.multi_hand_landmarks[0]
+            mp_draw.draw_landmarks(img, hand, mp_hands.HAND_CONNECTIONS)
+
+            # Get coordinates of the index finger tip and thumb tip
+            index_finger_tip = hand.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+            thumb_tip = hand.landmark[mp_hands.HandLandmark.THUMB_TIP]
+
+            # Convert coordinates to pixel values
+            index_x = int(index_finger_tip.x * img.shape[1])
+            index_y = int(index_finger_tip.y * img.shape[0])
+            thumb_x = int(thumb_tip.x * img.shape[1])
+            thumb_y = int(thumb_tip.y * img.shape[0])
+
+            # Detect pinch gesture (if the distance between index finger tip and thumb tip is small)
+            if abs(index_x - thumb_x) < 40 and abs(index_y - thumb_y) < 40:
+                gesture_data = {"gesture": "pinch_move", "x": index_x, "y": index_y}
                 pointer_pos = [gesture_data["x"], gesture_data["y"]]
                 if selected_object is not None and is_dragging:
                     objects[selected_object]["pos"] = pointer_pos
-
-            # Handle zoom gesture
-            if gesture_data.get("gesture") == "pinch_zoom" and selected_object is not None:
-                objects[selected_object]["zoom_factor"] = gesture_data["zoom_factor"]
-
-            # Check if pointer is over any object and select it for dragging
-            if gesture_data.get("gesture") == "pinch_move":
-                for i, obj in enumerate(objects):
-                    current_size = int(obj["size"] * obj["zoom_factor"])
-                    if math.dist(pointer_pos, obj["pos"]) < current_size:
-                        selected_object = i
-                        is_dragging = True
-                        break
                 else:
-                    selected_object = None
-                    is_dragging = False
+                    for i, obj in enumerate(objects):
+                        current_size = int(obj["size"] * obj["zoom_factor"])
+                        if math.dist(pointer_pos, obj["pos"]) < current_size:
+                            selected_object = i
+                            is_dragging = True
+                            break
 
-        except json.JSONDecodeError:
-            pass
+        elif len(results.multi_hand_landmarks) == 2:
+            hand1 = results.multi_hand_landmarks[0]
+            hand2 = results.multi_hand_landmarks[1]
+
+            # Draw landmarks
+            mp_draw.draw_landmarks(img, hand1, mp_hands.HAND_CONNECTIONS)
+            mp_draw.draw_landmarks(img, hand2, mp_hands.HAND_CONNECTIONS)
+
+            # Get index finger tips and thumb tips
+            index1 = hand1.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+            thumb1 = hand1.landmark[mp_hands.HandLandmark.THUMB_TIP]
+            index2 = hand2.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+            thumb2 = hand2.landmark[mp_hands.HandLandmark.THUMB_TIP]
+
+            # Convert coordinates to pixel values
+            index1_x = int(index1.x * img.shape[1])
+            index1_y = int(index1.y * img.shape[0])
+            thumb1_x = int(thumb1.x * img.shape[1])
+            thumb1_y = int(thumb1.y * img.shape[0])
+            index2_x = int(index2.x * img.shape[1])
+            index2_y = int(index2.y * img.shape[0])
+            thumb2_x = int(thumb2.x * img.shape[1])
+            thumb2_y = int(thumb2.y * img.shape[0])
+
+            # Calculate the distances for pinch detection
+            pinch1 = abs(index1_x - thumb1_x) < 40 and abs(index1_y - thumb1_y) < 40
+            pinch2 = abs(index2_x - thumb2_x) < 40 and abs(index2_y - thumb2_y) < 40
+
+            if pinch1 and pinch2:
+                # Calculate the distance between the two index fingers
+                distance = ((index2_x - index1_x) ** 2 + (index2_y - index1_y) ** 2) ** 0.5
+
+                if initial_distance is None:
+                    initial_distance = distance
+
+                gesture_data = {"gesture": "pinch_zoom", "zoom_factor": distance / initial_distance}
+                if selected_object is not None:
+                    objects[selected_object]["zoom_factor"] = gesture_data["zoom_factor"]
+
+            else:
+                initial_distance = None
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -144,4 +193,5 @@ while running:
 
     pygame.display.flip()
 
+cap.release()
 pygame.quit()
