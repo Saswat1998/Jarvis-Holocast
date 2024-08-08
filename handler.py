@@ -79,36 +79,41 @@ while running:
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     results = hands.process(img_rgb)
 
-    gesture_data = {}
-
     if results.multi_hand_landmarks:
         if len(results.multi_hand_landmarks) == 1:
             hand = results.multi_hand_landmarks[0]
             mp_draw.draw_landmarks(img, hand, mp_hands.HAND_CONNECTIONS)
 
-            # Get coordinates of the index finger tip and thumb tip
+            # Get coordinates of the index finger tip
             index_finger_tip = hand.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
-            thumb_tip = hand.landmark[mp_hands.HandLandmark.THUMB_TIP]
 
             # Convert coordinates to pixel values
             index_x = int(index_finger_tip.x * img.shape[1])
             index_y = int(index_finger_tip.y * img.shape[0])
+
+            # Move the pointer based on hand movement
+            pointer_pos = [index_x, index_y]
+
+            # Check if a pinch gesture is detected
+            thumb_tip = hand.landmark[mp_hands.HandLandmark.THUMB_TIP]
             thumb_x = int(thumb_tip.x * img.shape[1])
             thumb_y = int(thumb_tip.y * img.shape[0])
 
-            # Detect pinch gesture (if the distance between index finger tip and thumb tip is small)
             if abs(index_x - thumb_x) < 40 and abs(index_y - thumb_y) < 40:
-                gesture_data = {"gesture": "pinch_move", "x": index_x, "y": index_y}
-                pointer_pos = [gesture_data["x"], gesture_data["y"]]
-                if selected_object is not None and is_dragging:
-                    objects[selected_object]["pos"] = pointer_pos
-                else:
+                if selected_object is None:
+                    # Select an object if the pointer is over it
                     for i, obj in enumerate(objects):
                         current_size = int(obj["size"] * obj["zoom_factor"])
                         if math.dist(pointer_pos, obj["pos"]) < current_size:
                             selected_object = i
                             is_dragging = True
                             break
+                else:
+                    # Move the selected object
+                    objects[selected_object]["pos"] = pointer_pos
+            else:
+                is_dragging = False
+                selected_object = None
 
         elif len(results.multi_hand_landmarks) == 2:
             hand1 = results.multi_hand_landmarks[0]
@@ -145,9 +150,9 @@ while running:
                 if initial_distance is None:
                     initial_distance = distance
 
-                gesture_data = {"gesture": "pinch_zoom", "zoom_factor": distance / initial_distance}
                 if selected_object is not None:
-                    objects[selected_object]["zoom_factor"] = gesture_data["zoom_factor"]
+                    # Zoom the selected object
+                    objects[selected_object]["zoom_factor"] = distance / initial_distance
 
             else:
                 initial_distance = None
