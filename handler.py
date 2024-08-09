@@ -1,3 +1,4 @@
+import os
 import cv2
 import mediapipe as mp
 import pygame
@@ -24,12 +25,28 @@ iron_green = (34, 204, 34)
 font = pygame.font.Font(None, 36)
 small_font = pygame.font.Font(None, 24)
 
+# Load images from folder
+images_folder = './images'  # Replace with your images folder path
+image_objects = []
+image_positions = []
+for i, filename in enumerate(os.listdir(images_folder)):
+    if filename.endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
+        img_path = os.path.join(images_folder, filename)
+        image = pygame.image.load(img_path)
+        col = i % 4
+        row = i // 4
+        x = col * 200 + 100
+        y = row * 200 + 100
+        image_rect = image.get_rect(center=(x, y))
+        image_objects.append({"type": "image", "image": image, "rect": image_rect, "zoom_factor": 1.0})
+
 # Objects data
 objects = [
-    {"pos": [200, 200], "size": 50, "zoom_factor": 1.0},
-    {"pos": [400, 300], "size": 50, "zoom_factor": 1.0},
-    {"pos": [600, 400], "size": 50, "zoom_factor": 1.0}
-]
+    {"type": "circle", "pos": [200, 200], "size": 50, "zoom_factor": 1.0},
+    {"type": "circle", "pos": [400, 300], "size": 50, "zoom_factor": 1.0},
+    {"type": "circle", "pos": [600, 400], "size": 50, "zoom_factor": 1.0}
+] + image_objects
+
 selected_object = None
 pointer_pos = [screen_width // 2, screen_height // 2]
 is_dragging = False
@@ -42,6 +59,11 @@ mp_draw = mp.solutions.drawing_utils
 # Initialize Webcam
 cap = cv2.VideoCapture(0)
 initial_distance = None
+
+# Animation variables
+current_image_index = 0
+image_display_time = 1000  # Time to display each image in milliseconds
+last_image_switch_time = pygame.time.get_ticks()
 
 # Function to draw a glowing circle
 def draw_glowing_circle(surface, color, center, radius, glow_radius):
@@ -103,14 +125,23 @@ while running:
                 if selected_object is None:
                     # Select an object if the pointer is over it
                     for i, obj in enumerate(objects):
-                        current_size = int(obj["size"] * obj["zoom_factor"])
-                        if math.dist(pointer_pos, obj["pos"]) < current_size:
-                            selected_object = i
-                            is_dragging = True
-                            break
+                        if obj["type"] == "circle":
+                            current_size = int(obj["size"] * obj["zoom_factor"])
+                            if math.dist(pointer_pos, obj["pos"]) < current_size:
+                                selected_object = i
+                                is_dragging = True
+                                break
+                        elif obj["type"] == "image":
+                            if obj["rect"].collidepoint(pointer_pos):
+                                selected_object = i
+                                is_dragging = True
+                                break
                 else:
                     # Move the selected object
-                    objects[selected_object]["pos"] = pointer_pos
+                    if objects[selected_object]["type"] == "circle":
+                        objects[selected_object]["pos"] = pointer_pos
+                    elif objects[selected_object]["type"] == "image":
+                        objects[selected_object]["rect"].center = pointer_pos
             else:
                 is_dragging = False
                 selected_object = None
@@ -153,6 +184,9 @@ while running:
                 if selected_object is not None:
                     # Zoom the selected object
                     objects[selected_object]["zoom_factor"] = distance / initial_distance
+                    if objects[selected_object]["type"] == "image":
+                        objects[selected_object]["rect"].size = (int(objects[selected_object]["image"].get_width() * objects[selected_object]["zoom_factor"]),
+                                                                int(objects[selected_object]["image"].get_height() * objects[selected_object]["zoom_factor"]))
 
             else:
                 initial_distance = None
@@ -171,9 +205,14 @@ while running:
 
     # Draw the objects
     for i, obj in enumerate(objects):
-        current_size = int(obj["size"] * obj["zoom_factor"])
-        draw_glowing_circle(screen, iron_yellow, obj["pos"], current_size, 100)
-        pygame.draw.circle(screen, iron_blue, obj["pos"], current_size)
+        if i <= current_image_index:
+            if obj["type"] == "circle":
+                current_size = int(obj["size"] * obj["zoom_factor"])
+                draw_glowing_circle(screen, iron_yellow, obj["pos"], current_size, 100)
+                pygame.draw.circle(screen, iron_blue, obj["pos"], current_size)
+            elif obj["type"] == "image":
+                scaled_image = pygame.transform.scale(obj["image"], obj["rect"].size)
+                screen.blit(scaled_image, obj["rect"])
 
     # Draw the pointer
     pygame.draw.circle(screen, white, pointer_pos, 10)
@@ -195,6 +234,13 @@ while running:
     # Draw JARVIS logo in the bottom left corner
     jarvis_center = (100, screen_height - 100)
     draw_jarvis_logo(screen, "JARVIS", jarvis_center, 50, angle)
+
+    # Update image index for animation
+    current_time = pygame.time.get_ticks()
+    if current_time - last_image_switch_time > image_display_time:
+        if current_image_index < len(objects) - 1:
+            current_image_index += 1
+            last_image_switch_time = current_time
 
     pygame.display.flip()
 
