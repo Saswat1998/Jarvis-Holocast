@@ -28,7 +28,6 @@ small_font = pygame.font.Font(None, 24)
 # Load images from folder
 images_folder = './images'  # Replace with your images folder path
 image_objects = []
-image_positions = []
 for i, filename in enumerate(os.listdir(images_folder)):
     if filename.endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
         img_path = os.path.join(images_folder, filename)
@@ -39,6 +38,11 @@ for i, filename in enumerate(os.listdir(images_folder)):
         y = row * 200 + 100
         image_rect = image.get_rect(center=(x, y))
         image_objects.append({"type": "image", "image": image, "rect": image_rect, "zoom_factor": 1.0})
+
+# Load dustbin image
+dustbin_image = pygame.image.load('./Dustbin/dustbin.png')  # Replace with your dustbin image path
+dustbin_rect = dustbin_image.get_rect()
+dustbin_rect.bottomright = (screen_width - 80, screen_height - 100)
 
 # Objects data
 objects = [
@@ -110,7 +114,7 @@ while running:
             index_finger_tip = hand.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
 
             # Convert coordinates to pixel values
-            index_x = int(index_finger_tip.x * img.shape[1])
+            index_x = screen_width - int(index_finger_tip.x * img.shape[1])  # Flip the x-coordinate
             index_y = int(index_finger_tip.y * img.shape[0])
 
             # Move the pointer based on hand movement
@@ -118,7 +122,7 @@ while running:
 
             # Check if a pinch gesture is detected
             thumb_tip = hand.landmark[mp_hands.HandLandmark.THUMB_TIP]
-            thumb_x = int(thumb_tip.x * img.shape[1])
+            thumb_x = screen_width - int(thumb_tip.x * img.shape[1])  # Flip the x-coordinate
             thumb_y = int(thumb_tip.y * img.shape[0])
 
             if abs(index_x - thumb_x) < 40 and abs(index_y - thumb_y) < 40:
@@ -143,6 +147,15 @@ while running:
                     elif objects[selected_object]["type"] == "image":
                         objects[selected_object]["rect"].center = pointer_pos
             else:
+                if selected_object is not None:
+                    # Check if the object is over the dustbin when the pinch is released
+                    obj = objects[selected_object]
+                    if obj["type"] == "circle":
+                        if dustbin_rect.collidepoint(obj["pos"]):
+                            objects.pop(selected_object)
+                    elif obj["type"] == "image":
+                        if dustbin_rect.colliderect(obj["rect"]):
+                            objects.pop(selected_object)
                 is_dragging = False
                 selected_object = None
 
@@ -161,13 +174,13 @@ while running:
             thumb2 = hand2.landmark[mp_hands.HandLandmark.THUMB_TIP]
 
             # Convert coordinates to pixel values
-            index1_x = int(index1.x * img.shape[1])
+            index1_x = screen_width - int(index1.x * img.shape[1])  # Flip the x-coordinate
             index1_y = int(index1.y * img.shape[0])
-            thumb1_x = int(thumb1.x * img.shape[1])
+            thumb1_x = screen_width - int(thumb1.x * img.shape[1])  # Flip the x-coordinate
             thumb1_y = int(thumb1.y * img.shape[0])
-            index2_x = int(index2.x * img.shape[1])
+            index2_x = screen_width - int(index2.x * img.shape[1])  # Flip the x-coordinate
             index2_y = int(index2.y * img.shape[0])
-            thumb2_x = int(thumb2.x * img.shape[1])
+            thumb2_x = screen_width - int(thumb2.x * img.shape[1])  # Flip the x-coordinate
             thumb2_y = int(thumb2.y * img.shape[0])
 
             # Calculate the distances for pinch detection
@@ -234,6 +247,20 @@ while running:
     # Draw JARVIS logo in the bottom left corner
     jarvis_center = (100, screen_height - 100)
     draw_jarvis_logo(screen, "JARVIS", jarvis_center, 50, angle)
+
+    # Draw the dustbin in the bottom right corner
+    screen.blit(dustbin_image, dustbin_rect)
+
+    # Check if any object is overlapping with the dustbin
+    for obj in objects:
+        if obj["type"] == "circle":
+            if dustbin_rect.collidepoint(obj["pos"]):
+                draw_glowing_circle(screen, red, obj["pos"], obj["size"], 20)
+        elif obj["type"] == "image":
+            if dustbin_rect.colliderect(obj["rect"]):
+                s = pygame.Surface(obj["rect"].size, pygame.SRCALPHA)
+                s.fill((255, 0, 0, 128))  # Red overlay with transparency
+                screen.blit(s, obj["rect"])
 
     # Update image index for animation
     current_time = pygame.time.get_ticks()
