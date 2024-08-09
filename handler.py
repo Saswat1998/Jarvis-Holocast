@@ -3,6 +3,7 @@ import cv2
 import mediapipe as mp
 import pygame
 import math
+import time
 
 pygame.init()
 
@@ -42,7 +43,7 @@ for i, filename in enumerate(os.listdir(images_folder)):
 # Load dustbin image
 dustbin_image = pygame.image.load('./Dustbin/dustbin.png')  # Replace with your dustbin image path
 dustbin_rect = dustbin_image.get_rect()
-dustbin_rect.bottomright = (screen_width - 80, screen_height - 100)
+dustbin_rect.bottomright = (screen_width - 120, screen_height - 130)
 
 # Objects data
 objects = [
@@ -244,9 +245,13 @@ while running:
         )
         pygame.draw.line(screen, red, pointer_pos, end_pos, 2)
 
-    # Draw JARVIS logo in the bottom left corner
-    jarvis_center = (100, screen_height - 100)
-    draw_jarvis_logo(screen, "JARVIS", jarvis_center, 50, angle)
+    # Draw JARVIS logo in the bottom left corner if wake word is detected
+    if os.path.exists("wake_word_detected.txt"):
+        jarvis_center = (100, screen_height - 100)
+        draw_jarvis_logo(screen, "JARVIS", jarvis_center, 50, angle)
+        # Remove the file after displaying the logo to reset the state
+        # time.sleep(3)
+        # os.remove("wake_word_detected.txt")
 
     # Draw the dustbin in the bottom right corner
     screen.blit(dustbin_image, dustbin_rect)
