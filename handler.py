@@ -3,16 +3,16 @@ import cv2
 import mediapipe as mp
 import pygame
 import math
-import time
-import pywavefront
-import pyglet
 
 pygame.init()
 
-# Screen dimensions
-screen_width = 800
-screen_height = 600
-screen = pygame.display.set_mode((screen_width, screen_height))
+# Get the screen dimensions
+infoObject = pygame.display.Info()
+screen_width = infoObject.current_w
+screen_height = infoObject.current_h
+
+# Set the Pygame window to be windowed full screen
+screen = pygame.display.set_mode((screen_width, screen_height), pygame.NOFRAME)
 pygame.display.set_caption("Interactive Interface")
 
 # Colors
@@ -84,7 +84,7 @@ def draw_jarvis_logo(surface, text, center, radius, angle_offset):
         color = iron_yellow if i % 2 == 0 else iron_blue
         pygame.draw.line(surface, color, (x, y), (end_x, end_y), 2)
 
-# Function to load images
+# Load images
 def load_images():
     images_folder = './images'
     max_image_size = (200, 200)  # Replace with your images folder path
@@ -107,9 +107,9 @@ def load_images():
             image_objects.append({"type": "image", "image": image, "rect": image_rect, "zoom_factor": 1.0})
     return image_objects
 
-
 # Main loop
 running = True
+
 while running:
     success, img = cap.read()
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -123,17 +123,17 @@ while running:
             # Get coordinates of the index finger tip
             index_finger_tip = hand.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
 
-            # Convert coordinates to pixel values
-            index_x = screen_width - int(index_finger_tip.x * img.shape[1])  # Flip the x-coordinate
-            index_y = int(index_finger_tip.y * img.shape[0])
+            # Convert coordinates to pixel values and map to screen dimensions
+            index_x = screen_width - int(index_finger_tip.x * screen_width)  # Flip the x-coordinate
+            index_y = int(index_finger_tip.y * screen_height)
 
             # Move the pointer based on hand movement
             pointer_pos = [index_x, index_y]
 
             # Check if a pinch gesture is detected
             thumb_tip = hand.landmark[mp_hands.HandLandmark.THUMB_TIP]
-            thumb_x = screen_width - int(thumb_tip.x * img.shape[1])  # Flip the x-coordinate
-            thumb_y = int(thumb_tip.y * img.shape[0])
+            thumb_x = screen_width - int(thumb_tip.x * screen_width)  # Flip the x-coordinate
+            thumb_y = int(thumb_tip.y * screen_height)
 
             if abs(index_x - thumb_x) < 40 and abs(index_y - thumb_y) < 40:
                 if selected_object is None:
@@ -183,15 +183,15 @@ while running:
             index2 = hand2.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
             thumb2 = hand2.landmark[mp_hands.HandLandmark.THUMB_TIP]
 
-            # Convert coordinates to pixel values
-            index1_x = screen_width - int(index1.x * img.shape[1])  # Flip the x-coordinate
-            index1_y = int(index1.y * img.shape[0])
-            thumb1_x = screen_width - int(thumb1.x * img.shape[1])  # Flip the x-coordinate
-            thumb1_y = int(thumb1.y * img.shape[0])
-            index2_x = screen_width - int(index2.x * img.shape[1])  # Flip the x-coordinate
-            index2_y = int(index2.y * img.shape[0])
-            thumb2_x = screen_width - int(thumb2.x * img.shape[1])  # Flip the x-coordinate
-            thumb2_y = int(thumb2.y * img.shape[0])
+            # Convert coordinates to pixel values and map to screen dimensions
+            index1_x = screen_width - int(index1.x * screen_width)  # Flip the x-coordinate
+            index1_y = int(index1.y * screen_height)
+            thumb1_x = screen_width - int(thumb1.x * screen_width)  # Flip the x-coordinate
+            thumb1_y = int(thumb1.y * screen_height)
+            index2_x = screen_width - int(index2.x * screen_width)  # Flip the x-coordinate
+            index2_y = int(index2.y * screen_height)
+            thumb2_x = screen_width - int(thumb2.x * screen_width)  # Flip the x-coordinate
+            thumb2_y = int(thumb2.y * screen_height)
 
             # Calculate the distances for pinch detection
             pinch1 = abs(index1_x - thumb1_x) < 40 and abs(index1_y - thumb1_y) < 40
@@ -259,15 +259,11 @@ while running:
     if os.path.exists("wake_word_detected.txt"):
         jarvis_center = (100, screen_height - 100)
         draw_jarvis_logo(screen, "JARVIS", jarvis_center, 50, angle)
-        # Remove the file after displaying the logo to reset the state
-        # os.remove("wake_word_detected.txt")
 
     # Load images if the command is detected
     if os.path.exists("load_images_command.txt") and not images_loaded:
         objects += load_images()
         images_loaded = True
-        # os.remove("load_images_command.txt")
-        
 
     # Draw the dustbin in the bottom right corner
     screen.blit(dustbin_image, dustbin_rect)
