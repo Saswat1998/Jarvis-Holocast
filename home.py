@@ -39,11 +39,60 @@ buttons = [
     {"label": "Object Recognition", "pos": (0, 0), "color": iron_yellow, "action": "object_recognition", "visible": False}
 ]
 
-# State variable
-state = "home"
+# Define states for different interfaces
+INTERFACE_HOME = "home"
+INTERFACE_2D = "2d"
+INTERFACE_3D = "3d"
+INTERFACE_OBJECT_RECOGNITION = "object_recognition"
+
+
+# Initialize state
+current_interface = INTERFACE_HOME
+
+state = current_interface
 buttons_visible = False
 animation_start_time = 0
 animation_duration = 1  # Duration of the button appearance animation in seconds
+
+def switch_to_home_interface():
+    global current_interface
+    current_interface = INTERFACE_HOME
+
+def switch_to_2d_interface():
+    global current_interface
+    current_interface = INTERFACE_2D
+
+def switch_to_3d_interface():
+    global current_interface
+    current_interface = INTERFACE_3D
+
+def switch_to_object_recognition_interface():
+    global current_interface
+    current_interface = INTERFACE_OBJECT_RECOGNITION
+
+def handle_interface_switching():
+    global current_interface
+    if os.path.exists("switch_to_home_command.txt"):
+        current_interface = INTERFACE_HOME
+        os.remove("switch_to_home_command.txt")
+    elif os.path.exists("switch_to_2d_command.txt"):
+        current_interface = INTERFACE_2D
+        os.remove("switch_to_2d_command.txt")
+    elif os.path.exists("switch_to_3d_command.txt"):
+        current_interface = INTERFACE_3D
+        os.remove("switch_to_3d_command.txt")
+    elif os.path.exists("switch_to_object_recognition_command.txt"):
+        current_interface = INTERFACE_OBJECT_RECOGNITION
+        os.remove("switch_to_object_recognition_command.txt")
+
+    if current_interface == INTERFACE_HOME:
+        draw_home_interface()
+    elif current_interface == INTERFACE_2D:
+        load_images_interface()
+    elif current_interface == INTERFACE_3D:
+        load_models_interface()
+    elif current_interface == INTERFACE_OBJECT_RECOGNITION:
+        object_recognition_interface()
 
 # Main loop
 running = True
@@ -337,6 +386,13 @@ def load_images_interface():
             objects += load_images()
             images_loaded = True
 
+        # Check for the switch to home command
+        if os.path.exists("switch_to_home_command.txt"):
+            if os.path.exists("load_images_command.txt"):
+                os.remove("load_images_command.txt")
+            running = False
+            return
+
         # Draw the dustbin in the bottom right corner
         screen.blit(dustbin_image, dustbin_rect)
 
@@ -377,7 +433,7 @@ while running:
             running = False
         elif event.type == pygame.MOUSEBUTTONDOWN:
             mouse_pos = event.pos
-            if state == "home":
+            if state == INTERFACE_HOME:
                 if math.dist(mouse_pos, home_button["pos"]) <= button_radius:
                     buttons_visible = not buttons_visible
                     if buttons_visible:
@@ -386,20 +442,13 @@ while running:
                     if button["visible"] and math.dist(mouse_pos, button["pos"]) <= button_radius:
                         action = button["action"]
                         if action == "load_images":
-                            state = "load_images"
+                            switch_to_2d_interface()
                         elif action == "load_models":
-                            state = "load_models"
+                            switch_to_3d_interface()
                         elif action == "object_recognition":
-                            state = "object_recognition"
+                            switch_to_object_recognition_interface()
 
-    if state == "home":
-        draw_home_interface()
-    elif state == "load_images":
-        load_images_interface()
-    elif state == "load_models":
-        load_models_interface()
-    elif state == "object_recognition":
-        object_recognition_interface()
+    handle_interface_switching()
 
     pygame.display.flip()
 
