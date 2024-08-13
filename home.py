@@ -4,6 +4,10 @@ import mediapipe as mp
 import pygame
 import math
 import time
+from OpenGL.GL import *
+from OpenGL.GLU import *
+import numpy as np
+from pygame.locals import *
 
 pygame.init()
 
@@ -45,11 +49,9 @@ INTERFACE_2D = "2d"
 INTERFACE_3D = "3d"
 INTERFACE_OBJECT_RECOGNITION = "object_recognition"
 
-
 # Initialize state
 current_interface = INTERFACE_HOME
 
-state = current_interface
 buttons_visible = False
 animation_start_time = 0
 animation_duration = 1  # Duration of the button appearance animation in seconds
@@ -85,18 +87,6 @@ def handle_interface_switching():
         current_interface = INTERFACE_OBJECT_RECOGNITION
         os.remove("switch_to_object_recognition_command.txt")
 
-    if current_interface == INTERFACE_HOME:
-        draw_home_interface()
-    elif current_interface == INTERFACE_2D:
-        load_images_interface()
-    elif current_interface == INTERFACE_3D:
-        load_models_interface()
-    elif current_interface == INTERFACE_OBJECT_RECOGNITION:
-        object_recognition_interface()
-
-# Main loop
-running = True
-
 def render_text_centered(surface, text, initial_font, center, max_radius):
     font_size = initial_font.get_height()
     font = pygame.font.Font(None, font_size)
@@ -109,8 +99,6 @@ def render_text_centered(surface, text, initial_font, center, max_radius):
     text_surface = font.render(text, True, white)
     text_rect = text_surface.get_rect(center=center)
     surface.blit(text_surface, text_rect)
-
-
 
 def draw_home_interface():
     screen.fill(black)
@@ -134,8 +122,6 @@ def draw_home_interface():
             button["visible"] = animation_progress >= 1
             pygame.draw.circle(screen, button["color"], button["pos"], button_radius)
             render_text_centered(screen, button["label"], small_font, button["pos"], button_radius)
-
-
 
 def load_images_interface():
     import os
@@ -419,37 +405,106 @@ def load_images_interface():
     cap.release()
     pygame.quit()
 
+def load_obj(filename):
+    vertices = []
+    faces = []
+
+    with open(filename) as file:
+        for line in file:
+            if line.startswith('v '):
+                vertex = list(map(float, line.strip().split()[1:]))
+                vertices.append(vertex)
+            elif line.startswith('f '):
+                face = [int(index.split('/')[0]) for index in line.strip().split()[1:]]
+                faces.append(face)
+
+    return np.array(vertices), np.array(faces)
+
+def draw_model(vertices, faces):
+    glBegin(GL_TRIANGLES)
+    for face in faces:
+        for vertex_index in face:
+            glVertex3fv(vertices[vertex_index - 1])
+    glEnd()
+
+def normalize_and_scale(vertices, scale_factor):
+    centroid = np.mean(vertices, axis=0)
+    vertices -= centroid
+    max_distance = np.max(np.linalg.norm(vertices, axis=1))
+    vertices /= max_distance
+    vertices *= scale_factor
+    return vertices
+
 def load_models_interface():
+    global screen
     print("Loading 3D Model Interface")
-    # Place your 3D model loading code here
+    screen = pygame.display.set_mode((screen_width, screen_height), DOUBLEBUF | OPENGL)
+    pygame.display.set_caption("3D Model Loading Interface")
+    gluPerspective(45, (screen_width / screen_height), 0.1, 50.0)
+    glTranslatef(0.0, 0.0, -5)
+
+    vertices, faces = load_obj('./models/FinalBaseMesh.obj')
+    vertices = normalize_and_scale(vertices, 1.0)
+    rotation_speed = 2
+    clock = pygame.time.Clock()
+    running = True
+
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+                break
+
+        if os.path.exists("switch_to_home_command.txt"):
+            running = False
+            break
+
+        glRotatef(rotation_speed, 3, 1, 1)
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        draw_model(vertices, faces)
+        pygame.display.flip()
+        clock.tick(60)
 
 def object_recognition_interface():
     print("Loading Object Recognition Interface")
     # Place your object recognition code here
 
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            mouse_pos = event.pos
-            if state == INTERFACE_HOME:
-                if math.dist(mouse_pos, home_button["pos"]) <= button_radius:
-                    buttons_visible = not buttons_visible
-                    if buttons_visible:
-                        animation_start_time = time.time()
-                for button in buttons:
-                    if button["visible"] and math.dist(mouse_pos, button["pos"]) <= button_radius:
-                        action = button["action"]
-                        if action == "load_images":
-                            switch_to_2d_interface()
-                        elif action == "load_models":
-                            switch_to_3d_interface()
-                        elif action == "object_recognition":
-                            switch_to_object_recognition_interface()
+def main_loop():
+    global screen, running, buttons_visible, animation_start_time  # Add buttons_visible here
+    running = True
+    while running:
+        handle_interface_switching()
+        if current_interface == INTERFACE_HOME:
+            draw_home_interface()
+        elif current_interface == INTERFACE_2D:
+            load_images_interface()
+        elif current_interface == INTERFACE_3D:
+            load_models_interface()
+        elif current_interface == INTERFACE_OBJECT_RECOGNITION:
+            object_recognition_interface()
 
-    handle_interface_switching()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = event.pos
+                if current_interface == INTERFACE_HOME:
+                    if math.dist(mouse_pos, home_button["pos"]) <= button_radius:
+                        buttons_visible = not buttons_visible
+                        if buttons_visible:
+                            animation_start_time = time.time()
+                    for button in buttons:
+                        if button["visible"] and math.dist(mouse_pos, button["pos"]) <= button_radius:
+                            action = button["action"]
+                            if action == "load_images":
+                                switch_to_2d_interface()
+                            elif action == "load_models":
+                                switch_to_3d_interface()
+                            elif action == "object_recognition":
+                                switch_to_object_recognition_interface()
 
-    pygame.display.flip()
+        pygame.display.flip()
 
+
+main_loop()
 pygame.quit()
