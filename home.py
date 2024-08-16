@@ -56,20 +56,53 @@ buttons_visible = False
 animation_start_time = 0
 animation_duration = 1  # Duration of the button appearance animation in seconds
 
+# Fade-in animation variables
+info_alpha = 0
+fade_in_speed = 10  # Speed of the fade-in animation
+info_displayed = False
+hand_detected = False  # Track if hand detection has occurred
+
+cap = cv2.VideoCapture(1)
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands()
+mp_draw = mp.solutions.drawing_utils
+pointer_pos = [screen_width // 2, screen_height // 2]
+
+def get_weather_info():
+    # This is a placeholder function. Replace this with actual weather fetching logic.
+    return "Sunny 25°C"
+
 def switch_to_home_interface():
-    global current_interface
+    global current_interface, screen
+    if current_interface == INTERFACE_3D:
+        pygame.quit()
+        pygame.init()
+    screen = pygame.display.set_mode((screen_width, screen_height), pygame.NOFRAME)
+    pygame.display.set_caption("Home Interface")
     current_interface = INTERFACE_HOME
 
 def switch_to_2d_interface():
     global current_interface
+    if current_interface == INTERFACE_3D:
+        pygame.quit()
+        pygame.init()
+    screen = pygame.display.set_mode((screen_width, screen_height), pygame.NOFRAME)
+    pygame.display.set_caption("2D Image Loading Interface")
     current_interface = INTERFACE_2D
 
 def switch_to_3d_interface():
-    global current_interface
+    global current_interface, screen
+    screen = pygame.display.set_mode((screen_width, screen_height), DOUBLEBUF | OPENGL)
+    pygame.display.set_caption("3D Model Loading Interface")
     current_interface = INTERFACE_3D
 
 def switch_to_object_recognition_interface():
     global current_interface
+    if current_interface == INTERFACE_3D:
+        pygame.quit()
+        pygame.init()
+    screen = pygame.display.set_mode((screen_width, screen_height), pygame.NOFRAME)
+    pygame.display.set_caption("Object Recognition Interface")
     current_interface = INTERFACE_OBJECT_RECOGNITION
 
 def handle_interface_switching():
@@ -87,6 +120,15 @@ def handle_interface_switching():
         current_interface = INTERFACE_OBJECT_RECOGNITION
         os.remove("switch_to_object_recognition_command.txt")
 
+    if current_interface == INTERFACE_HOME:
+        draw_home_interface()
+    elif current_interface == INTERFACE_2D:
+        load_images_interface()
+    elif current_interface == INTERFACE_3D:
+        load_models_interface()
+    elif current_interface == INTERFACE_OBJECT_RECOGNITION:
+        object_recognition_interface()
+
 def render_text_centered(surface, text, initial_font, center, max_radius):
     font_size = initial_font.get_height()
     font = pygame.font.Font(None, font_size)
@@ -100,7 +142,28 @@ def render_text_centered(surface, text, initial_font, center, max_radius):
     text_rect = text_surface.get_rect(center=center)
     surface.blit(text_surface, text_rect)
 
+# Function to draw the rotating JARVIS logo
+def draw_jarvis_logo(surface, text, center, radius, angle_offset):
+    text_surface = small_font.render(text, True, iron_blue)
+    text_rect = text_surface.get_rect(center=center)
+    surface.blit(text_surface, text_rect)
+
+    num_segments = 60
+    angle_step = 360 / num_segments
+    current_angle = pygame.time.get_ticks() / 10 % 360
+
+    for i in range(num_segments):
+        segment_angle = current_angle + i * angle_step
+        x = center[0] + radius * math.cos(math.radians(segment_angle))
+        y = center[1] + radius * math.sin(math.radians(segment_angle))
+        end_x = center[0] + (radius + 5) * math.cos(math.radians(segment_angle))
+        end_y = center[1] + (radius + 5) * math.sin(math.radians(segment_angle))
+
+        color = iron_yellow if i % 2 == 0 else iron_blue
+        pygame.draw.line(surface, color, (x, y), (end_x, end_y), 2)
+
 def draw_home_interface():
+    global info_alpha, info_displayed, hand_detected
     screen.fill(black)
     
     # Draw the home button
@@ -123,21 +186,54 @@ def draw_home_interface():
             pygame.draw.circle(screen, button["color"], button["pos"], button_radius)
             render_text_centered(screen, button["label"], small_font, button["pos"], button_radius)
 
+    # Hand detection
+    success, img = cap.read()
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    results = hands.process(img_rgb)
+
+    if results.multi_hand_landmarks:
+        hand = results.multi_hand_landmarks[0]
+        mp_draw.draw_landmarks(img, hand, mp_hands.HAND_CONNECTIONS)
+        index_finger_tip = hand.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+        pointer_pos[0] = screen_width - int(index_finger_tip.x * screen_width)
+        pointer_pos[1] = int(index_finger_tip.y * screen_height)
+        hand_detected = True
+
+        # Start fade-in animation if not already displayed
+        if not info_displayed and info_alpha < 255:
+            info_alpha = min(info_alpha + fade_in_speed, 255)
+            if info_alpha == 255:
+                info_displayed = True
+
+    # Draw time and weather only after hand is detected
+    if hand_detected:
+        if info_alpha > 0:
+            time_text = small_font.render(time.strftime('%H:%M:%S'), True, blue)
+            weather_text = small_font.render(get_weather_info(), True, blue)
+            
+            time_surface = pygame.Surface(time_text.get_size(), pygame.SRCALPHA)
+            weather_surface = pygame.Surface(weather_text.get_size(), pygame.SRCALPHA)
+            
+            time_surface.blit(time_text, (0, 0))
+            weather_surface.blit(weather_text, (0, 0))
+            
+            time_surface.set_alpha(info_alpha)
+            weather_surface.set_alpha(info_alpha)
+            
+            screen.blit(time_surface, (20, 20))
+            screen.blit(weather_surface, (screen_width - weather_text.get_width() - 20, 20))
+
+    # Draw JARVIS logo if wake word is detected
+    if os.path.exists("wake_word_detected.txt"):
+        jarvis_center = (100, screen_height - 100)
+        draw_jarvis_logo(screen, "JARVIS", jarvis_center, 50, pygame.time.get_ticks())
+
 def load_images_interface():
-    import os
-    import cv2
-    import mediapipe as mp
-    import pygame
-    import math
-
-    pygame.init()
-
-    # Set the Pygame window to be windowed full screen
-    screen = pygame.display.set_mode((screen_width, screen_height), pygame.NOFRAME)
+    global screen
     pygame.display.set_caption("2D Image Loading Interface")
 
     # Load dustbin image
-    dustbin_image = pygame.image.load('./Dustbin/dustbin.png')  # Replace with your dustbin image path
+    dustbin_image = pygame.image.load('./Dustbin/dustbin.png')
     dustbin_rect = dustbin_image.get_rect()
     dustbin_rect.bottomright = (screen_width - 120, screen_height - 120)
 
@@ -145,57 +241,23 @@ def load_images_interface():
     objects = []
 
     selected_object = None
-    pointer_pos = [screen_width // 2, screen_height // 2]
     is_dragging = False
     images_loaded = False
-
-    # Initialize MediaPipe Hands
-    mp_hands = mp.solutions.hands
-    hands = mp_hands.Hands()
-    mp_draw = mp.solutions.drawing_utils
-
-    # Initialize Webcam
-    cap = cv2.VideoCapture(0)
-    initial_distance = None
 
     # Animation variables
     current_image_index = 0
     image_display_time = 1200  # Time to display each image in milliseconds
     last_image_switch_time = pygame.time.get_ticks()
 
-    # Function to draw a glowing circle
     def draw_glowing_circle(surface, color, center, radius, glow_radius):
         for i in range(glow_radius):
             s = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
             pygame.draw.circle(s, (*color, max(255 - 255 * (i / glow_radius), 0)), (radius, radius), radius)
             surface.blit(s, (center[0] - radius, center[1] - radius), special_flags=pygame.BLEND_RGBA_ADD)
 
-    # Function to draw the rotating JARVIS logo
-    def draw_jarvis_logo(surface, text, center, radius, angle_offset):
-        # Draw the text
-        text_surface = small_font.render(text, True, iron_blue)
-        text_rect = text_surface.get_rect(center=center)
-        surface.blit(text_surface, text_rect)
-
-        # Draw the rotating ring
-        num_segments = 60
-        angle_step = 360 / num_segments
-        current_angle = pygame.time.get_ticks() / 10 % 360
-
-        for i in range(num_segments):
-            segment_angle = current_angle + i * angle_step
-            x = center[0] + radius * math.cos(math.radians(segment_angle))
-            y = center[1] + radius * math.sin(math.radians(segment_angle))
-            end_x = center[0] + (radius + 5) * math.cos(math.radians(segment_angle))
-            end_y = center[1] + (radius + 5) * math.sin(math.radians(segment_angle))
-
-            color = iron_yellow if i % 2 == 0 else iron_blue
-            pygame.draw.line(surface, color, (x, y), (end_x, end_y), 2)
-
-    # Load images
     def load_images():
         images_folder = './images'
-        max_image_size = (200, 200)  # Replace with your images folder path
+        max_image_size = (200, 200)
         image_objects = []
         for i, filename in enumerate(os.listdir(images_folder)):
             if filename.endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
@@ -203,7 +265,6 @@ def load_images_interface():
                 image = pygame.image.load(img_path)
                 image_rect = image.get_rect()
 
-                # Resize image if it is too large
                 if image_rect.width > max_image_size[0] or image_rect.height > max_image_size[1]:
                     image = pygame.transform.scale(image, max_image_size)
                     image_rect = image.get_rect()
@@ -227,24 +288,16 @@ def load_images_interface():
                 hand = results.multi_hand_landmarks[0]
                 mp_draw.draw_landmarks(img, hand, mp_hands.HAND_CONNECTIONS)
 
-                # Get coordinates of the index finger tip
                 index_finger_tip = hand.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+                pointer_pos[0] = screen_width - int(index_finger_tip.x * screen_width)
+                pointer_pos[1] = int(index_finger_tip.y * screen_height)
 
-                # Convert coordinates to pixel values and map to screen dimensions
-                index_x = screen_width - int(index_finger_tip.x * screen_width)  # Flip the x-coordinate
-                index_y = int(index_finger_tip.y * screen_height)
-
-                # Move the pointer based on hand movement
-                pointer_pos = [index_x, index_y]
-
-                # Check if a pinch gesture is detected
                 thumb_tip = hand.landmark[mp_hands.HandLandmark.THUMB_TIP]
-                thumb_x = screen_width - int(thumb_tip.x * screen_width)  # Flip the x-coordinate
+                thumb_x = screen_width - int(thumb_tip.x * screen_width)
                 thumb_y = int(thumb_tip.y * screen_height)
 
-                if abs(index_x - thumb_x) < 40 and abs(index_y - thumb_y) < 40:
+                if abs(pointer_pos[0] - thumb_x) < 40 and abs(pointer_pos[1] - thumb_y) < 40:
                     if selected_object is None:
-                        # Select an object if the pointer is over it
                         for i, obj in enumerate(objects):
                             if obj["type"] == "circle":
                                 current_size = int(obj["size"] * obj["zoom_factor"])
@@ -258,14 +311,12 @@ def load_images_interface():
                                     is_dragging = True
                                     break
                     else:
-                        # Move the selected object
                         if objects[selected_object]["type"] == "circle":
                             objects[selected_object]["pos"] = pointer_pos
                         elif objects[selected_object]["type"] == "image":
                             objects[selected_object]["rect"].center = pointer_pos
                 else:
                     if selected_object is not None:
-                        # Check if the object is over the dustbin when the pinch is released
                         obj = objects[selected_object]
                         if obj["type"] == "circle":
                             if dustbin_rect.collidepoint(obj["pos"]):
@@ -279,47 +330,36 @@ def load_images_interface():
             elif len(results.multi_hand_landmarks) == 2:
                 hand1 = results.multi_hand_landmarks[0]
                 hand2 = results.multi_hand_landmarks[1]
-
-                # Draw landmarks
                 mp_draw.draw_landmarks(img, hand1, mp_hands.HAND_CONNECTIONS)
                 mp_draw.draw_landmarks(img, hand2, mp_hands.HAND_CONNECTIONS)
 
-                # Get index finger tips and thumb tips
                 index1 = hand1.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
                 thumb1 = hand1.landmark[mp_hands.HandLandmark.THUMB_TIP]
                 index2 = hand2.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
                 thumb2 = hand2.landmark[mp_hands.HandLandmark.THUMB_TIP]
 
-                # Convert coordinates to pixel values and map to screen dimensions
-                index1_x = screen_width - int(index1.x * screen_width)  # Flip the x-coordinate
+                index1_x = screen_width - int(index1.x * screen_width)
                 index1_y = int(index1.y * screen_height)
-                thumb1_x = screen_width - int(thumb1.x * screen_width)  # Flip the x-coordinate
+                thumb1_x = screen_width - int(thumb1.x * screen_width)
                 thumb1_y = int(thumb1.y * screen_height)
-                index2_x = screen_width - int(index2.x * screen_width)  # Flip the x-coordinate
+                index2_x = screen_width - int(index2.x * screen_width)
                 index2_y = int(index2.y * screen_height)
-                thumb2_x = screen_width - int(thumb2.x * screen_width)  # Flip the x-coordinate
+                thumb2_x = screen_width - int(thumb2.x * screen_width)
                 thumb2_y = int(thumb2.y * screen_height)
 
-                # Calculate the distances for pinch detection
                 pinch1 = abs(index1_x - thumb1_x) < 40 and abs(index1_y - thumb1_y) < 40
                 pinch2 = abs(index2_x - thumb2_x) < 40 and abs(index2_y - thumb2_y) < 40
 
                 if pinch1 and pinch2:
-                    # Calculate the distance between the two index fingers
                     distance = ((index2_x - index1_x) ** 2 + (index2_y - index1_y) ** 2) ** 0.5
 
-                    if initial_distance is None:
-                        initial_distance = distance
-
                     if selected_object is not None:
-                        # Zoom the selected object
                         objects[selected_object]["zoom_factor"] = distance / initial_distance
                         if objects[selected_object]["type"] == "image":
-                            objects[selected_object]["rect"].size = (int(objects[selected_object]["image"].get_width() * objects[selected_object]["zoom_factor"]),
-                                                                    int(objects[selected_object]["image"].get_height() * objects[selected_object]["zoom_factor"]))
-
-                else:
-                    initial_distance = None
+                            objects[selected_object]["rect"].size = (
+                                int(objects[selected_object]["image"].get_width() * objects[selected_object]["zoom_factor"]),
+                                int(objects[selected_object]["image"].get_height() * objects[selected_object]["zoom_factor"])
+                            )
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -328,13 +368,11 @@ def load_images_interface():
 
         screen.fill(black)
 
-        # Draw the background grid
         for x in range(0, screen_width, 50):
             pygame.draw.line(screen, iron_blue, (x, 0), (x, screen_height), 1)
         for y in range(0, screen_height, 50):
             pygame.draw.line(screen, iron_blue, (0, y), (screen_width, y), 1)
 
-        # Draw the objects
         for i, obj in enumerate(objects):
             if i <= current_image_index:
                 if obj["type"] == "circle":
@@ -345,15 +383,12 @@ def load_images_interface():
                     scaled_image = pygame.transform.scale(obj["image"], obj["rect"].size)
                     screen.blit(scaled_image, obj["rect"])
 
-        # Draw the pointer
         pygame.draw.circle(screen, white, pointer_pos, 10)
 
-        # Draw text
         text = font.render('JARVIS Interface', True, iron_green)
         screen.blit(text, (20, 20))
 
-        # Draw rotating lines around the pointer
-        angle = pygame.time.get_ticks() / 1000 * 90  # Rotate at 90 degrees per second
+        angle = pygame.time.get_ticks() / 1000 * 90
         for i in range(4):
             length = 20
             end_pos = (
@@ -362,27 +397,22 @@ def load_images_interface():
             )
             pygame.draw.line(screen, red, pointer_pos, end_pos, 2)
 
-        # Draw JARVIS logo in the bottom left corner if wake word is detected
         if os.path.exists("wake_word_detected.txt"):
             jarvis_center = (100, screen_height - 100)
             draw_jarvis_logo(screen, "JARVIS", jarvis_center, 50, angle)
 
-        # Load images if the command is detected
         if os.path.exists("load_images_command.txt") and not images_loaded:
             objects += load_images()
             images_loaded = True
 
-        # Check for the switch to home command
         if os.path.exists("switch_to_home_command.txt"):
             if os.path.exists("load_images_command.txt"):
                 os.remove("load_images_command.txt")
             running = False
             return
 
-        # Draw the dustbin in the bottom right corner
         screen.blit(dustbin_image, dustbin_rect)
 
-        # Check if any object is overlapping with the dustbin
         for obj in objects:
             if obj["type"] == "circle":
                 if dustbin_rect.collidepoint(obj["pos"]):
@@ -390,10 +420,9 @@ def load_images_interface():
             elif obj["type"] == "image":
                 if dustbin_rect.colliderect(obj["rect"]):
                     s = pygame.Surface(obj["rect"].size, pygame.SRCALPHA)
-                    s.fill((255, 0, 0, 128))  # Red overlay with transparency
+                    s.fill((255, 0, 0, 128))
                     screen.blit(s, obj["rect"])
 
-        # Update image index for animation
         current_time = pygame.time.get_ticks()
         if current_time - last_image_switch_time > image_display_time:
             if current_image_index < len(objects) - 1:
@@ -404,6 +433,7 @@ def load_images_interface():
 
     cap.release()
     pygame.quit()
+    switch_to_home_interface()
 
 def load_obj(filename):
     vertices = []
@@ -464,25 +494,18 @@ def load_models_interface():
         draw_model(vertices, faces)
         pygame.display.flip()
         clock.tick(60)
+    pygame.quit()
+    switch_to_home_interface()
 
 def object_recognition_interface():
     print("Loading Object Recognition Interface")
     # Place your object recognition code here
 
 def main_loop():
-    global screen, running, buttons_visible, animation_start_time  # Add buttons_visible here
+    global screen, running, buttons_visible, animation_start_time
     running = True
     while running:
         handle_interface_switching()
-        if current_interface == INTERFACE_HOME:
-            draw_home_interface()
-        elif current_interface == INTERFACE_2D:
-            load_images_interface()
-        elif current_interface == INTERFACE_3D:
-            load_models_interface()
-        elif current_interface == INTERFACE_OBJECT_RECOGNITION:
-            object_recognition_interface()
-
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -504,7 +527,6 @@ def main_loop():
                                 switch_to_object_recognition_interface()
 
         pygame.display.flip()
-
 
 main_loop()
 pygame.quit()
